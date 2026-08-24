@@ -5,6 +5,7 @@ import 'screens/calendar_screen.dart';
 import 'screens/qibla_screen.dart';
 import 'screens/vastu_screen.dart';
 import 'screens/events_screen.dart';
+import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
