@@ -1,11 +1,3 @@
-// lib/theme.dart
-//
-// Colors and text styles pulled directly from your HTML templates
-// (widget_today.html's --maroon: #254a45 / --maroon-dark: #1b3733,
-// and the cream/beige card backgrounds used across calendar.html,
-// events.html, prayer.html). Keep this as the single source of truth
-// so every screen stays visually consistent with the web app.
-
 import 'package:flutter/material.dart';
 
 class AppColors {
@@ -16,14 +8,29 @@ class AppColors {
   static const border = Color(0xFFE5E0DA);
   static const text = Color(0xFF1A1412);
   static const muted = Color(0xFF7A726A);
-  static const noteWarnBg = Color(0xFFFFF8E1);
-  static const noteWarnBorder = Color(0xFFFFE08A);
+  static const warningBg = Color(0xFFFFF8E1);
+  static const warningBorder = Color(0xFFFFE08A);
+
+  static const bohra = Color(0xFF254A45);
+  static const sunni = Color(0xFF2563EB);
+  static const shia = Color(0xFF7C3AED);
+  static const christian = Color(0xFF2563EB);
+  static const french = Color(0xFF64748B);
+  static const jewish = Color(0xFF7C3AED);
+  static const hindu = Color(0xFFEA580C);
+  static const parsi = Color(0xFF059669);
+  static const personal = Color(0xFFD97706);
 }
 
 ThemeData buildAppTheme() {
+  final scheme = ColorScheme.fromSeed(
+    seedColor: AppColors.maroon,
+    brightness: Brightness.light,
+  );
+
   return ThemeData(
     useMaterial3: true,
-    colorSchemeSeed: AppColors.maroon,
+    colorScheme: scheme,
     scaffoldBackgroundColor: AppColors.cream,
     appBarTheme: const AppBarTheme(
       backgroundColor: AppColors.maroon,
@@ -32,32 +39,35 @@ ThemeData buildAppTheme() {
       centerTitle: false,
       titleTextStyle: TextStyle(
         color: Colors.white,
-        fontSize: 18,
-        fontWeight: FontWeight.w700,
+        fontSize: 19,
+        fontWeight: FontWeight.w800,
       ),
     ),
     cardTheme: CardThemeData(
       color: AppColors.cardBg,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         side: const BorderSide(color: AppColors.border),
       ),
+      margin: EdgeInsets.zero,
     ),
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: AppColors.cardBg,
-      indicatorColor: AppColors.maroon.withValues(alpha: 0.12),
+      backgroundColor: Colors.white,
+      indicatorColor: AppColors.maroon.withValues(alpha: .12),
       labelTextStyle: WidgetStateProperty.resolveWith((states) {
         final selected = states.contains(WidgetState.selected);
         return TextStyle(
-          fontSize: 11.5,
-          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          fontSize: 11,
+          fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
           color: selected ? AppColors.maroon : AppColors.muted,
         );
       }),
       iconTheme: WidgetStateProperty.resolveWith((states) {
         final selected = states.contains(WidgetState.selected);
-        return IconThemeData(color: selected ? AppColors.maroon : AppColors.muted);
+        return IconThemeData(
+          color: selected ? AppColors.maroon : AppColors.muted,
+        );
       }),
     ),
     textTheme: const TextTheme(
@@ -68,12 +78,15 @@ ThemeData buildAppTheme() {
   );
 }
 
-/// Reusable card wrapper matching .stat-box / .saint-card / .timeline-wrap
-/// from prayer.html -- fafafa-ish bg, thin border, rounded corners.
 class InfoCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
-  const InfoCard({super.key, required this.child, this.padding = const EdgeInsets.all(16)});
+
+  const InfoCard({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(16),
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -81,41 +94,54 @@ class InfoCard extends StatelessWidget {
       width: double.infinity,
       padding: padding,
       decoration: BoxDecoration(
-        color: const Color(0xFFFAFAFA),
-        border: Border.all(color: const Color(0xFFE5E5E5)),
-        borderRadius: BorderRadius.circular(10),
+        color: Colors.white,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: child,
     );
   }
 }
 
-/// The yellow "using default location" banner from prayer.html/qibla.html.
 class LocationWarningBanner extends StatelessWidget {
   final String locationName;
+
   const LocationWarningBanner({super.key, required this.locationName});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.noteWarnBg,
-        border: Border.all(color: AppColors.noteWarnBorder),
-        borderRadius: BorderRadius.circular(8),
+        color: AppColors.warningBg,
+        border: Border.all(color: AppColors.warningBorder),
+        borderRadius: BorderRadius.circular(9),
       ),
       child: Text.rich(
         TextSpan(
-          style: const TextStyle(fontSize: 13, color: AppColors.text),
+          style: const TextStyle(fontSize: 12.5, color: AppColors.text),
           children: [
-            const TextSpan(text: 'These times are for '),
-            TextSpan(text: locationName, style: const TextStyle(fontWeight: FontWeight.w700)),
-            const TextSpan(text: ' (default) — set your location in Settings for accurate times.'),
+            const TextSpan(text: 'Using '),
+            TextSpan(
+              text: locationName,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+            const TextSpan(text: '. Set your location for accurate timings.'),
           ],
         ),
       ),
     );
+  }
+}
+
+Color parseHexColor(String? value, {Color fallback = AppColors.maroon}) {
+  if (value == null || value.trim().isEmpty) return fallback;
+  try {
+    var hex = value.trim().replaceFirst('#', '');
+    if (hex.length == 6) hex = 'FF$hex';
+    return Color(int.parse(hex, radix: 16));
+  } catch (_) {
+    return fallback;
   }
 }

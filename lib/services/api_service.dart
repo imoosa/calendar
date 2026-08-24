@@ -1,140 +1,148 @@
-// lib/services/api_service.dart
-//
-// Every path here is copied from main.py's actual @app.get/@app.post
-// routes, not from README.md's aspirational contract -- a few of those
-// didn't match what's implemented (see calendar_screen.dart's comment
-// for the /api/calendar/month discrepancy).
-
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../models/today_data.dart';
 
+class ApiConfig {
+  // Change only this line if your Flask server is hosted elsewhere.
+  static const String baseUrl = 'https://calendar.mactronik.com';
+  static const Duration timeout = Duration(seconds: 20);
+}
+
+class ApiException implements Exception {
+  final String message;
+  ApiException(this.message);
+  @override
+  String toString() => message;
+}
+
 class ApiService {
-  static const _baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'https://calendar.mactronik.com',
-  );
-  static const _cacheKey = 'cached_events_response';
-  static const _cacheDateKey = 'cached_events_synced_at';
-
-  Uri _uri(String path, [Map<String, String>? qp]) {
-    // baseUrl has no trailing slash by convention here; path always starts with /.
-    return Uri.parse('$_baseUrl$path').replace(queryParameters: qp);
+  Uri _uri(String path, [Map<String, dynamic>? query]) {
+    final params = <String, String>{};
+    query?.forEach((key, value) {
+      if (value != null) params[key] = '$value';
+    });
+    return Uri.parse('${ApiConfig.baseUrl}$path').replace(queryParameters: params);
   }
 
-  /// GET /api/widget/today -- date, native-calendar reading, prayer
-  /// times, and all events landing today. Powers TodayScreen and the
-  /// home-screen widget push.
-  Future<TodayData> fetchToday() async {
-    final res = await http.get(_uri('/api/widget/today')).timeout(const Duration(seconds: 8));
-    if (res.statusCode != 200) {
-      throw Exception('Server error ${res.statusCode}');
+  Future<dynamic> _get(Uri uri) async {
+    final response = await http.get(uri).timeout(ApiConfig.timeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException('Server returned ${response.statusCode}: ${response.body}');
     }
-    return TodayData.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+    try {
+      return jsonDecode(response.body);
+    } catch (_) {
+      throw ApiException('Server returned invalid JSON.');
+    }
   }
 
-  /// GET /api/calendar/today -- just the Bohra Hijri y/m/d for today,
-  /// used to know which month to open CalendarScreen on.
+  Future<TodayData> fetchToday() async {
+    final data = await _get(_uri('/api/widget/today'));
+    return TodayData.fromJson(Map<String, dynamic>.from(data));
+  }
+
   Future<Map<String, dynamic>> fetchHijriToday() async {
-    final res = await http.get(_uri('/api/calendar/today')).timeout(const Duration(seconds: 8));
-    if (res.statusCode != 200) throw Exception('Server error ${res.statusCode}');
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    final data = await _get(_uri('/api/calendar/today'));
+    return Map<String, dynamic>.from(data);
   }
 
-  /// GET /api/calendar/month/<hijri_year>/<hijri_month>
-  /// NOTE: this is a Bohra Hijri month grid, addressed by path segments
-  /// -- NOT the Gregorian year/month query-param contract README.md
-  /// describes. Each day in the response only carries Bohra HijriEvent
-  /// rows (get_events_for_month only queries the bohra-shaped table),
-  /// not interfaith/Sunni/Shia events -- add those client-side from
-  /// fetchGeneralEvents() if the Calendar screen needs them too.
-  Future<Map<String, dynamic>> fetchHijriMonth(int hijriYear, int hijriMonth) async {
-    final res = await http
-        .get(_uri('/api/calendar/month/$hijriYear/$hijriMonth'))
-        .timeout(const Duration(seconds: 8));
-    if (res.statusCode != 200) throw Exception('Server error ${res.statusCode}');
-    return jsonDecode(res.body) as Map<String, dynamic>;
+  Future<Map<String, dynamic>> fetchHijriMonth(int year, int month) async {
+    final data = await _get(
+      _uri('/api/calendar/month/$year/$month'),
+    );
+    return Map<String, dynamic>.from(data);
   }
 
-  /// GET /api/vastu/today -- {"enabled": false} if the user has Vastu
-  /// turned off server-side; check that before reading the other keys.
-  Future<Map<String, dynamic>> fetchVastuToday() async {
-    final res = await http.get(_uri('/api/vastu/today')).timeout(const Duration(seconds: 8));
-    if (res.statusCode != 200) throw Exception('Server error ${res.statusCode}');
-    return jsonDecode(res.body) as Map<String, dynamic>;
-  }
-
-  /// GET /api/qibla?lat=&lng=
-  Future<Map<String, dynamic>> fetchQibla(double lat, double lng) async {
-    final res = await http
-        .get(_uri('/api/qibla', {'lat': '$lat', 'lng': '$lng'}))
-        .timeout(const Duration(seconds: 8));
-    if (res.statusCode != 200) throw Exception('Server error ${res.statusCode}');
-    return jsonDecode(res.body) as Map<String, dynamic>;
-  }
-
-  /// GET /api/mobile/events -- Hijri (Bohra/Sunni/Shia) + interfaith
-  /// events over a date range, up to 90 days, deliberately excludes
-  /// PersonalEvent (single-tenant table server-side -- see main.py's
-  /// docstring on that route). Falls back to the last successful
-  /// response on network failure, and rethrows only if there's no
-  /// cache and no network (first-ever launch offline).
   Future<Map<String, dynamic>> fetchGeneralEvents({
     required DateTime start,
     required DateTime end,
     double? lat,
     double? lng,
     double? tzOffset,
-    List<String>? show, // e.g. ['bohra','sunni','christian']
+    Set<String>? show,
   }) async {
-    final qp = <String, String>{
-      'start': _iso(start),
-      'end': _iso(end),
-      if (lat != null) 'lat': lat.toString(),
-      if (lng != null) 'lng': lng.toString(),
-      if (tzOffset != null) 'tz_offset': tzOffset.toString(),
+    final query = <String, dynamic>{
+      'start': _isoDate(start),
+      'end': _isoDate(end),
+      if (lat != null) 'lat': lat,
+      if (lng != null) 'lng': lng,
+      if (tzOffset != null) 'tz_offset': tzOffset,
     };
-    final uri = _uri('/api/mobile/events', qp).replace(
-      queryParameters: {
-        ...qp,
-        if (show != null) 'show': show.join(','), // note below
+
+    final uri = _uri('/api/mobile/events', query);
+    final base = uri.toString();
+    final showValues = show ??
+        {
+          'bohra',
+          'sunni',
+          'shia',
+          'christian',
+          'french',
+          'jewish',
+          'hindu',
+          'parsi',
+        };
+
+    final withShows = Uri.parse(base).replace(
+      queryParametersAll: {
+        ...uri.queryParametersAll,
+        'show': showValues.toList(),
       },
     );
-    // NOTE: Flask reads `show` via request.args.getlist("show"), which
-    // expects repeated ?show=a&show=b params, not one comma-joined
-    // value. Uri.replace can't easily repeat a key, so if you need the
-    // `show` filter, build the query string manually instead of using
-    // this shortcut -- left as a single joined param here as a
-    // placeholder that will NOT filter correctly server-side yet.
 
-    try {
-      final res = await http.get(uri).timeout(const Duration(seconds: 8));
-      if (res.statusCode != 200) throw Exception('Server error ${res.statusCode}');
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      await _saveToCache(data);
-      return data;
-    } catch (e) {
-      final cached = await _loadFromCache();
-      if (cached != null) return cached;
-      rethrow;
-    }
+    final data = await _get(withShows);
+    return Map<String, dynamic>.from(data);
   }
 
-  Future<void> _saveToCache(Map<String, dynamic> data) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_cacheKey, jsonEncode(data));
-    await prefs.setString(_cacheDateKey, DateTime.now().toIso8601String());
+  Future<Map<String, dynamic>> fetchPrayerTimes({
+    required double lat,
+    required double lng,
+    required double tzOffset,
+    DateTime? date,
+  }) async {
+    final data = await _get(
+      _uri('/api/prayer-times', {
+        'lat': lat,
+        'lng': lng,
+        'tz_offset': tzOffset,
+        if (date != null) 'for_date': _isoDate(date),
+      }),
+    );
+    return Map<String, dynamic>.from(data);
   }
 
-  Future<Map<String, dynamic>?> _loadFromCache() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_cacheKey);
-    if (raw == null) return null;
-    return jsonDecode(raw) as Map<String, dynamic>;
+  Future<Map<String, dynamic>> fetchTimezone({
+    required double lat,
+    required double lng,
+    DateTime? date,
+  }) async {
+    final data = await _get(
+      _uri('/api/tz-offset', {
+        'lat': lat,
+        'lng': lng,
+        if (date != null) 'for_date': _isoDate(date),
+      }),
+    );
+    return Map<String, dynamic>.from(data);
   }
 
-  String _iso(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  Future<Map<String, dynamic>> fetchQibla({
+    required double lat,
+    required double lng,
+  }) async {
+    final data = await _get(
+      _uri('/api/qibla', {'lat': lat, 'lng': lng}),
+    );
+    return Map<String, dynamic>.from(data);
+  }
+
+  Future<Map<String, dynamic>> fetchVastuToday() async {
+    final data = await _get(_uri('/api/vastu/today'));
+    return Map<String, dynamic>.from(data);
+  }
+
+  String _isoDate(DateTime value) {
+    final d = DateTime(value.year, value.month, value.day);
+    return d.toIso8601String().substring(0, 10);
+  }
 }

@@ -1,33 +1,26 @@
-// lib/screens/qibla_screen.dart
-//
-// Same compass logic as before, restyled to match qibla.html: maroon
-// needle, "using default location" warning banner style, maroon compass
-// ring. The actual bug fix for this screen not working is NOT in this
-// file -- it's the missing AndroidManifest.xml / Info.plist location
-// permission entries. Add those first, or this screen will still hang
-// or error regardless of styling.
-
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart';
+import '../services/api_service.dart';
 import '../theme.dart';
-
-const double _kaabaLat = 21.4225;
-const double _kaabaLng = 39.8262;
 
 class QiblaScreen extends StatefulWidget {
   const QiblaScreen({super.key});
+
   @override
   State<QiblaScreen> createState() => _QiblaScreenState();
 }
 
 class _QiblaScreenState extends State<QiblaScreen> {
+  final _api = ApiService();
+
   double? _qiblaBearing;
+  double? _distanceKm;
+  double _heading = 0;
   String? _error;
   StreamSubscription<CompassEvent>? _sub;
-  double _heading = 0;
 
   @override
   void initState() {
@@ -36,43 +29,48 @@ class _QiblaScreenState extends State<QiblaScreen> {
   }
 
   Future<void> _init() async {
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-      setState(() => _error =
-          'Location permission is required to compute Qibla direction. Enable it in your phone\'s app settings.');
-      return;
-    }
-    if (!await Geolocator.isLocationServiceEnabled()) {
-      setState(() => _error = 'Enable location services on your phone to compute Qibla direction.');
-      return;
-    }
+    setState(() => _error = null);
 
     try {
-      final pos = await Geolocator.getCurrentPosition();
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        throw Exception('Location permission is required for Qibla.');
+      }
+
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        throw Exception('Enable location services to use Qibla.');
+      }
+
+      final position = await Geolocator.getCurrentPosition();
+
+      final server = await _api.fetchQibla(
+        lat: position.latitude,
+        lng: position.longitude,
+      );
+
+      if (!mounted) return;
       setState(() {
-        _qiblaBearing = _computeBearing(pos.latitude, pos.longitude, _kaabaLat, _kaabaLng);
+        _qiblaBearing =
+            double.tryParse('${server['bearing_degrees']}');
+        _distanceKm = double.tryParse('${server['distance_km']}');
       });
+
+      await _sub?.cancel();
       _sub = FlutterCompass.events?.listen((event) {
-        if (event.heading != null && mounted) {
-          setState(() => _heading = event.heading!);
+        final value = event.heading;
+        if (value != null && mounted) {
+          setState(() => _heading = value);
         }
       });
     } catch (e) {
-      setState(() => _error = 'Could not get your location: $e');
+      if (!mounted) return;
+      setState(() => _error = '$e');
     }
-  }
-
-  double _computeBearing(double lat1, double lng1, double lat2, double lng2) {
-    final phi1 = lat1 * pi / 180;
-    final phi2 = lat2 * pi / 180;
-    final deltaLambda = (lng2 - lng1) * pi / 180;
-    final y = sin(deltaLambda) * cos(phi2);
-    final x = cos(phi1) * sin(phi2) - sin(phi1) * cos(phi2) * cos(deltaLambda);
-    final theta = atan2(y, x);
-    return (theta * 180 / pi + 360) % 360;
   }
 
   @override
@@ -84,31 +82,82 @@ class _QiblaScreenState extends State<QiblaScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Qibla Direction')),
-      body: Center(
-        child: _error != null
-            ? Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+      appBar: AppBar(
+        title: const Text('Qibla'),
+        actions: [
+          IconButton(onPressed: _init, icon: const Icon(Icons.refresh)),
+        ],
+      ),
+      body: _error != null
+          ? _errorView()
+          : _qiblaBearing == null
+              ? const Center(
+                  child: CircularProgressIndicator(color: AppColors.maroon),
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
                   children: [
-                    const Icon(Icons.location_off, color: AppColors.muted, size: 40),
-                    const SizedBox(height: 12),
-                    Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.text)),
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      onPressed: () {
-                        setState(() => _error = null);
-                        _init();
-                      },
-                      child: const Text('Retry'),
+                    InfoCard(
+                      child: Column(
+                        children: [
+                          const Text(
+                            'Qibla Direction',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${_qiblaBearing!.toStringAsFixed(1)}° from North',
+                            style: const TextStyle(
+                              color: AppColors.maroon,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          if (_distanceKm != null)
+                            Text(
+                              '${_distanceKm!.toStringAsFixed(1)} km to Kaaba',
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 12,
+                              ),
+                            ),
+                          const SizedBox(height: 20),
+                          _CompassDial(
+                            heading: _heading,
+                            qiblaBearing: _qiblaBearing!,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              )
-            : _qiblaBearing == null
-                ? const CircularProgressIndicator(color: AppColors.maroon)
-                : _CompassDial(heading: _heading, qiblaBearing: _qiblaBearing!),
+    );
+  }
+
+  Widget _errorView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: InfoCard(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.location_off, size: 38, color: AppColors.muted),
+              const SizedBox(height: 12),
+              Text(
+                _error ?? '',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 14),
+              FilledButton(
+                onPressed: _init,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -117,44 +166,52 @@ class _QiblaScreenState extends State<QiblaScreen> {
 class _CompassDial extends StatelessWidget {
   final double heading;
   final double qiblaBearing;
-  const _CompassDial({required this.heading, required this.qiblaBearing});
+
+  const _CompassDial({
+    required this.heading,
+    required this.qiblaBearing,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final needleAngle = (qiblaBearing - heading) * pi / 180;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: 260,
-          height: 260,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
-                  border: Border.all(color: AppColors.maroon, width: 2),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 10, offset: const Offset(0, 2)),
-                  ],
-                ),
-              ),
-              Transform.rotate(
-                angle: needleAngle,
-                child: const Icon(Icons.navigation, size: 90, color: AppColors.maroon),
-              ),
-            ],
+    final angle = (qiblaBearing - heading) * pi / 180;
+
+    return SizedBox(
+      width: 285,
+      height: 285,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.cream,
+              border: Border.all(color: AppColors.maroon, width: 2),
+            ),
           ),
-        ),
-        const SizedBox(height: 20),
-        Text('${qiblaBearing.toStringAsFixed(1)}° from North',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.maroon)),
-        const SizedBox(height: 4),
-        const Text('Point the top of your phone toward North to find your qibla direction.',
-            style: TextStyle(fontSize: 13, color: AppColors.muted), textAlign: TextAlign.center),
-      ],
+          const Positioned(top: 14, child: Text('N', style: TextStyle(fontWeight: FontWeight.w900))),
+          const Positioned(bottom: 14, child: Text('S', style: TextStyle(fontWeight: FontWeight.w900))),
+          const Positioned(left: 18, child: Text('W', style: TextStyle(fontWeight: FontWeight.w900))),
+          const Positioned(right: 18, child: Text('E', style: TextStyle(fontWeight: FontWeight.w900))),
+          Transform.rotate(
+            angle: angle,
+            child: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.navigation, size: 92, color: AppColors.maroon),
+                Text(
+                  'QIBLA',
+                  style: TextStyle(
+                    color: AppColors.maroon,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

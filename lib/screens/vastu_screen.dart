@@ -1,14 +1,10 @@
-// lib/screens/vastu_screen.dart
-//
-// Field names copied 1:1 from api_vastu_today()'s jsonify(...) call in
-// main.py -- ruling_planet, energy_type, best_direction, etc. Update
-// this if that endpoint's shape ever changes.
-
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../theme.dart';
 
 class VastuScreen extends StatefulWidget {
   const VastuScreen({super.key});
+
   @override
   State<VastuScreen> createState() => _VastuScreenState();
 }
@@ -23,68 +19,183 @@ class _VastuScreenState extends State<VastuScreen> {
     _future = _api.fetchVastuToday();
   }
 
+  Future<void> _refresh() async {
+    setState(() => _future = _api.fetchVastuToday());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Vastu')),
-      body: FutureBuilder<Map<String, dynamic>>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snap.hasError) {
-            return Center(child: Text('Could not load Vastu guidance: ${snap.error}'));
-          }
-          final data = snap.data!;
-          if (data['enabled'] != true) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('Vastu guidance is turned off in your account settings.'),
-              ),
-            );
-          }
-          final tips = (data['tips'] as List<dynamic>? ?? []).cast<String>();
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text('${data['weekday']}', style: Theme.of(context).textTheme.titleLarge),
-              Text('Ruling planet: ${data['ruling_planet']}'),
-              Text('Energy: ${data['energy_type']}'),
-              const Divider(height: 32),
-              _row('Best direction', data['best_direction'], data['best_activity']),
-              _row('Avoid direction', data['avoid_direction'], data['avoid_activity']),
-              const Divider(height: 32),
-              _row('Sleeping', data['sleeping_direction'], null),
-              _row('Working', data['working_direction'], null),
-              _row('Eating', data['eating_direction'], null),
-              _row('Study', data['study_direction'], null),
-              if (tips.isNotEmpty) ...[
-                const Divider(height: 32),
-                Text('Tips', style: Theme.of(context).textTheme.titleMedium),
-                ...tips.map((t) => Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Text('• $t'),
-                    )),
+      appBar: AppBar(
+        title: const Text('Vastu'),
+        actions: [
+          IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: FutureBuilder<Map<String, dynamic>>(
+          future: _future,
+          builder: (context, snap) {
+            if (snap.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snap.hasError) {
+              return Center(child: Text('Could not load Vastu: ${snap.error}'));
+            }
+
+            final data = snap.data ?? {};
+            if (data['enabled'] != true) {
+              return ListView(
+                children: const [
+                  SizedBox(height: 120),
+                  Padding(
+                    padding: EdgeInsets.all(24),
+                    child: InfoCard(
+                      child: Text(
+                        'Vastu guidance is currently unavailable from the server.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            final tips = (data['tips'] as List<dynamic>? ?? [])
+                .map((e) => '$e')
+                .toList();
+
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
+              children: [
+                InfoCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${data['weekday'] ?? ''}',
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.maroon,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text('Ruling planet: ${data['ruling_planet'] ?? '—'}'),
+                      Text('Energy: ${data['energy_type'] ?? '—'}'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _directionCard(
+                  'Best direction',
+                  data['best_direction'],
+                  data['best_activity'],
+                  Icons.check_circle_outline,
+                ),
+                const SizedBox(height: 10),
+                _directionCard(
+                  'Avoid direction',
+                  data['avoid_direction'],
+                  data['avoid_activity'],
+                  Icons.do_not_disturb_alt_outlined,
+                ),
+                const SizedBox(height: 12),
+                InfoCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Daily directions',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 8),
+                      _simpleRow('Sleeping', data['sleeping_direction']),
+                      _simpleRow('Working', data['working_direction']),
+                      _simpleRow('Eating', data['eating_direction']),
+                      _simpleRow('Study', data['study_direction']),
+                    ],
+                  ),
+                ),
+                if (tips.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  InfoCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Tips',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 7),
+                        ...tips.map(
+                          (tip) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('• ', style: TextStyle(color: AppColors.maroon)),
+                                Expanded(child: Text(tip)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
-            ],
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
 
-  Widget _row(String label, dynamic direction, dynamic activity) {
+  Widget _directionCard(
+    String title,
+    dynamic direction,
+    dynamic activity,
+    IconData icon,
+  ) {
+    return InfoCard(
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.maroon, size: 28),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                const SizedBox(height: 2),
+                Text(
+                  '${direction ?? '—'}',
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                ),
+                if (activity != null)
+                  Text(
+                    '$activity',
+                    style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _simpleRow(String label, dynamic value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label),
+          Expanded(child: Text(label, style: const TextStyle(color: AppColors.muted))),
           Text(
-            activity != null ? '$direction — $activity' : '$direction',
-            style: const TextStyle(fontWeight: FontWeight.w600),
+            '${value ?? '—'}',
+            style: const TextStyle(fontWeight: FontWeight.w800),
           ),
         ],
       ),
