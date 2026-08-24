@@ -53,46 +53,58 @@ class ApiService {
     return Map<String, dynamic>.from(data);
   }
 
-  Future<Map<String, dynamic>> fetchGeneralEvents({
-    required DateTime start,
-    required DateTime end,
-    double? lat,
-    double? lng,
-    double? tzOffset,
-    Set<String>? show,
-  }) async {
-    final query = <String, dynamic>{
-      'start': _isoDate(start),
-      'end': _isoDate(end),
-      if (lat != null) 'lat': lat,
-      if (lng != null) 'lng': lng,
-      if (tzOffset != null) 'tz_offset': tzOffset,
-    };
+Future<Map<String, dynamic>> fetchGeneralEvents({
+  required DateTime start,
+  required DateTime end,
+  double? lat,
+  double? lng,
+  double? tzOffset,
+  List<String>? show,
+}) async {
+  final params = <String>[
+    'start=${Uri.encodeQueryComponent(_iso(start))}',
+    'end=${Uri.encodeQueryComponent(_iso(end))}',
+    if (lat != null) 'lat=${Uri.encodeQueryComponent(lat.toString())}',
+    if (lng != null) 'lng=${Uri.encodeQueryComponent(lng.toString())}',
+    if (tzOffset != null)
+      'tz_offset=${Uri.encodeQueryComponent(tzOffset.toString())}',
+  ];
 
-    final uri = _uri('/api/mobile/events', query);
-    final base = uri.toString();
-    final showValues = show ??
-        {
-          'bohra',
-          'sunni',
-          'shia',
-          'christian',
-          'french',
-          'jewish',
-          'hindu',
-          'parsi',
-        };
-
-    final withShows = Uri.parse(base).replace(
-      queryParametersAll: {
-        ...uri.queryParametersAll,
-        'show': showValues.toList(),
-      },
-    );
-
-    final data = await _get(withShows);
-    return Map<String, dynamic>.from(data);
+  // Flask uses request.args.getlist("show"), so each community
+  // must be sent as a separate ?show=value parameter.
+  if (show != null) {
+    for (final value in show) {
+      params.add('show=${Uri.encodeQueryComponent(value)}');
+    }
   }
+
+  final uri = Uri.parse(
+    '$_baseUrl/api/mobile/events?${params.join('&')}',
+  );
+
+  try {
+    final res = await http
+        .get(uri)
+        .timeout(const Duration(seconds: 8));
+
+    if (res.statusCode != 200) {
+      throw Exception('Server error ${res.statusCode}');
+    }
+
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+
+    await _saveToCache(data);
+    return data;
+  } catch (e) {
+    final cached = await _loadFromCache();
+
+    if (cached != null) {
+      return cached;
+    }
+
+    rethrow;
+  }
+}
 
   Future<Map<String, dynamic>> fetchPrayerTimes({
     required double lat,
