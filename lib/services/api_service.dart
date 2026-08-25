@@ -1,157 +1,78 @@
-import 'dart:convert';
+// lib/services/api_service.dart
+// Updated for the multi-calendar Flutter Calendar screen.
 
+import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/today_data.dart';
 
-class ApiConfig {
-  // Production Flask server.
-  // Override at build time with:
-  // flutter build apk --dart-define=API_BASE_URL=https://example.com
-  static const String baseUrl = String.fromEnvironment(
+class ApiService {
+  static const _baseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'https://calendar.mactronik.com',
   );
 
-  static const Duration timeout = Duration(seconds: 20);
-}
+  static const _cacheKey = 'cached_events_response';
+  static const _cacheDateKey = 'cached_events_synced_at';
 
-class ApiException implements Exception {
-  final String message;
-
-  ApiException(this.message);
-
-  @override
-  String toString() => message;
-}
-
-class ApiService {
-  static const String _cacheKey = 'cached_events_response';
-  static const String _cacheDateKey = 'cached_events_synced_at';
-
-  Uri _uri(
-    String path, [
-    Map<String, dynamic>? query,
-  ]) {
-    final params = <String, String>{};
-
-    query?.forEach((key, value) {
-      if (value != null) {
-        params[key] = value.toString();
-      }
-    });
-
-    return Uri.parse(
-      '${ApiConfig.baseUrl}$path',
-    ).replace(
-      queryParameters: params.isEmpty ? null : params,
-    );
+  Uri _uri(String path, [Map<String, String>? qp]) {
+    return Uri.parse('$_baseUrl$path').replace(queryParameters: qp);
   }
 
-  Future<dynamic> _get(Uri uri) async {
-    final response = await http
-        .get(uri)
-        .timeout(ApiConfig.timeout);
-
-    if (response.statusCode < 200 ||
-        response.statusCode >= 300) {
-      throw ApiException(
-        'Server returned ${response.statusCode}: ${response.body}',
-      );
-    }
-
-    try {
-      return jsonDecode(response.body);
-    } catch (_) {
-      throw ApiException(
-        'Server returned invalid JSON.',
-      );
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // TODAY
-  // ─────────────────────────────────────────────────────────────
-
-  /// GET /api/widget/today
-  ///
-  /// Returns:
-  /// - Gregorian date
-  /// - Native calendar information
-  /// - Prayer times
-  /// - Today's events
-  /// - Location
   Future<TodayData> fetchToday() async {
-    final data = await _get(
-      _uri('/api/widget/today'),
-    );
-
-    if (data is! Map) {
-      throw ApiException(
-        'Invalid Today response from server.',
-      );
+    final res = await http.get(_uri('/api/widget/today')).timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) {
+      throw Exception('Server returned ${res.statusCode}: ${res.body}');
     }
-
-    return TodayData.fromJson(
-      Map<String, dynamic>.from(data),
-    );
+    return TodayData.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // HIJRI CALENDAR
-  // ─────────────────────────────────────────────────────────────
+  Future<Map<String, dynamic>> fetchCalendar({
+    required String calendar,
+    String secondary = '',
+    int? year,
+    int? month,
+    DateTime? selected,
+    List<String>? show,
+  }) async {
+    final qp = <String, String>{
+      'cal': calendar,
+      if (secondary.isNotEmpty) 'secondary': secondary,
+      if (year != null) 'y': '$year',
+      if (month != null) 'm': '$month',
+      if (selected != null) 'selected': _iso(selected),
+    };
 
-  /// GET /api/calendar/today
-  Future<Map<String, dynamic>> fetchHijriToday() async {
-    final data = await _get(
-      _uri('/api/calendar/today'),
-    );
-
-    if (data is! Map) {
-      throw ApiException(
-        'Invalid calendar/today response.',
-      );
+    var uri = _uri('/api/mobile/calendar', qp);
+    if (show != null && show.isNotEmpty) {
+      final parts = <String>[];
+      qp.forEach((k, v) => parts.add('${Uri.encodeQueryComponent(k)}=${Uri.encodeQueryComponent(v)}'));
+      for (final value in show) {
+        parts.add('show=${Uri.encodeQueryComponent(value)}');
+      }
+      uri = Uri.parse('$_baseUrl/api/mobile/calendar?${parts.join('&')}');
     }
 
-    return Map<String, dynamic>.from(data);
-  }
-
-  /// GET /api/calendar/month/<hijri_year>/<hijri_month>
-  Future<Map<String, dynamic>> fetchHijriMonth(
-    int year,
-    int month,
-  ) async {
-    final data = await _get(
-      _uri('/api/calendar/month/$year/$month'),
-    );
-
-    if (data is! Map) {
-      throw ApiException(
-        'Invalid calendar/month response.',
-      );
+    final res = await http.get(uri).timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200) {
+      throw Exception('Server returned ${res.statusCode}: ${res.body}');
     }
-
-    return Map<String, dynamic>.from(data);
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // GENERAL EVENTS
-  // ─────────────────────────────────────────────────────────────
+  Future<Map<String, dynamic>> fetchVastuToday() async {
+    final res = await http.get(_uri('/api/vastu/today')).timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) throw Exception('Server returned ${res.statusCode}: ${res.body}');
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
 
-  /// GET /api/mobile/events
-  ///
-  /// The Flask backend uses request.args.getlist("show").
-  /// Therefore multiple communities are sent as:
-  ///
-  /// ?show=bohra&show=sunni&show=shia
-  ///
-  /// rather than:
-  ///
-  /// ?show=bohra,sunni,shia
-  ///
-  /// PersonalEvent records are intentionally not requested from
-  /// this public mobile endpoint.
+  Future<Map<String, dynamic>> fetchQibla(double lat, double lng) async {
+    final res = await http.get(_uri('/api/qibla', {'lat': '$lat', 'lng': '$lng'})).timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) throw Exception('Server returned ${res.statusCode}: ${res.body}');
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> fetchGeneralEvents({
     required DateTime start,
     required DateTime end,
@@ -160,249 +81,46 @@ class ApiService {
     double? tzOffset,
     List<String>? show,
   }) async {
-    final queryParts = <String>[
-      'start=${Uri.encodeQueryComponent(_isoDate(start))}',
-      'end=${Uri.encodeQueryComponent(_isoDate(end))}',
+    final parts = <String>[
+      'start=${Uri.encodeQueryComponent(_iso(start))}',
+      'end=${Uri.encodeQueryComponent(_iso(end))}',
+      if (lat != null) 'lat=${Uri.encodeQueryComponent('$lat')}',
+      if (lng != null) 'lng=${Uri.encodeQueryComponent('$lng')}',
+      if (tzOffset != null) 'tz_offset=${Uri.encodeQueryComponent('$tzOffset')}',
     ];
-
-    if (lat != null) {
-      queryParts.add(
-        'lat=${Uri.encodeQueryComponent(lat.toString())}',
-      );
-    }
-
-    if (lng != null) {
-      queryParts.add(
-        'lng=${Uri.encodeQueryComponent(lng.toString())}',
-      );
-    }
-
-    if (tzOffset != null) {
-      queryParts.add(
-        'tz_offset=${Uri.encodeQueryComponent(tzOffset.toString())}',
-      );
-    }
-
     if (show != null) {
-      for (final tradition in show) {
-        if (tradition.trim().isEmpty) {
-          continue;
-        }
-
-        queryParts.add(
-          'show=${Uri.encodeQueryComponent(tradition.trim())}',
-        );
+      for (final value in show) {
+        parts.add('show=${Uri.encodeQueryComponent(value)}');
       }
     }
 
-    final uri = Uri.parse(
-      '${ApiConfig.baseUrl}/api/mobile/events'
-      '?${queryParts.join('&')}',
-    );
-
+    final uri = Uri.parse('$_baseUrl/api/mobile/events?${parts.join('&')}');
     try {
-      final response = await http
-          .get(uri)
-          .timeout(ApiConfig.timeout);
-
-      if (response.statusCode < 200 ||
-          response.statusCode >= 300) {
-        throw ApiException(
-          'Server returned ${response.statusCode}: '
-          '${response.body}',
-        );
-      }
-
-      final decoded = jsonDecode(response.body);
-
-      if (decoded is! Map) {
-        throw ApiException(
-          'Invalid events response from server.',
-        );
-      }
-
-      final data = Map<String, dynamic>.from(decoded);
-
+      final res = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (res.statusCode != 200) throw Exception('Server returned ${res.statusCode}: ${res.body}');
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
       await _saveToCache(data);
-
       return data;
     } catch (e) {
       final cached = await _loadFromCache();
-
-      if (cached != null) {
-        return cached;
-      }
-
+      if (cached != null) return cached;
       rethrow;
     }
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // PRAYER TIMES
-  // ─────────────────────────────────────────────────────────────
-
-  /// GET /api/prayer-times
-  Future<Map<String, dynamic>> fetchPrayerTimes({
-    required double lat,
-    required double lng,
-    required double tzOffset,
-    DateTime? date,
-  }) async {
-    final data = await _get(
-      _uri(
-        '/api/prayer-times',
-        {
-          'lat': lat,
-          'lng': lng,
-          'tz_offset': tzOffset,
-          if (date != null)
-            'for_date': _isoDate(date),
-        },
-      ),
-    );
-
-    if (data is! Map) {
-      throw ApiException(
-        'Invalid prayer-times response.',
-      );
-    }
-
-    return Map<String, dynamic>.from(data);
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // TIMEZONE
-  // ─────────────────────────────────────────────────────────────
-
-  /// GET /api/tz-offset
-  Future<Map<String, dynamic>> fetchTimezone({
-    required double lat,
-    required double lng,
-    DateTime? date,
-  }) async {
-    final data = await _get(
-      _uri(
-        '/api/tz-offset',
-        {
-          'lat': lat,
-          'lng': lng,
-          if (date != null)
-            'for_date': _isoDate(date),
-        },
-      ),
-    );
-
-    if (data is! Map) {
-      throw ApiException(
-        'Invalid timezone response.',
-      );
-    }
-
-    return Map<String, dynamic>.from(data);
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // QIBLA
-  // ─────────────────────────────────────────────────────────────
-
-  /// GET /api/qibla?lat=&lng=
-  Future<Map<String, dynamic>> fetchQibla({
-    required double lat,
-    required double lng,
-  }) async {
-    final data = await _get(
-      _uri(
-        '/api/qibla',
-        {
-          'lat': lat,
-          'lng': lng,
-        },
-      ),
-    );
-
-    if (data is! Map) {
-      throw ApiException(
-        'Invalid Qibla response.',
-      );
-    }
-
-    return Map<String, dynamic>.from(data);
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // VASTU
-  // ─────────────────────────────────────────────────────────────
-
-  /// GET /api/vastu/today
-  Future<Map<String, dynamic>> fetchVastuToday() async {
-    final data = await _get(
-      _uri('/api/vastu/today'),
-    );
-
-    if (data is! Map) {
-      throw ApiException(
-        'Invalid Vastu response.',
-      );
-    }
-
-    return Map<String, dynamic>.from(data);
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // CACHE
-  // ─────────────────────────────────────────────────────────────
-
-  Future<void> _saveToCache(
-    Map<String, dynamic> data,
-  ) async {
-    final prefs =
-        await SharedPreferences.getInstance();
-
-    await prefs.setString(
-      _cacheKey,
-      jsonEncode(data),
-    );
-
-    await prefs.setString(
-      _cacheDateKey,
-      DateTime.now().toIso8601String(),
-    );
+  Future<void> _saveToCache(Map<String, dynamic> data) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_cacheKey, jsonEncode(data));
+    await prefs.setString(_cacheDateKey, DateTime.now().toIso8601String());
   }
 
   Future<Map<String, dynamic>?> _loadFromCache() async {
-    final prefs =
-        await SharedPreferences.getInstance();
-
+    final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_cacheKey);
-
-    if (raw == null || raw.isEmpty) {
-      return null;
-    }
-
-    try {
-      final decoded = jsonDecode(raw);
-
-      if (decoded is! Map) {
-        return null;
-      }
-
-      return Map<String, dynamic>.from(decoded);
-    } catch (_) {
-      return null;
-    }
+    if (raw == null) return null;
+    return jsonDecode(raw) as Map<String, dynamic>;
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // DATE HELPERS
-  // ─────────────────────────────────────────────────────────────
-
-  String _isoDate(DateTime value) {
-    final d = DateTime(
-      value.year,
-      value.month,
-      value.day,
-    );
-
-    return d.toIso8601String().substring(0, 10);
-  }
+  String _iso(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }
