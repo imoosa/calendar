@@ -5,7 +5,7 @@ import '../data/umm_al_qura_hijri.dart';
 import '../data/parsi_hijri.dart';
 import '../data/hijri_events_data.dart';
 import '../data/interfaith_events_data.dart';
-import '../data/prayer_times_calc.dart';
+import '../data/prayer_times_calc.dart' as prayer_calc;
 import '../models/today_data.dart';
 
 const double kSamaaDefaultLat = 19.076;
@@ -188,7 +188,7 @@ class LocalCalendarService {
     final cal = await defaultCalendar();
     final enabled = await enabledSources();
     final native = nativeFor(now, cal);
-    final p = calculatePrayerTimes(
+    final p = prayer_calc.calculatePrayerTimes(
       kSamaaDefaultLat,
       kSamaaDefaultLng,
       now,
