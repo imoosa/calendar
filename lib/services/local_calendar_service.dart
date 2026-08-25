@@ -206,7 +206,17 @@ class LocalCalendarService {
     return TodayData(
       date: _dateLabel(now),
       native: native,
-      prayer: p,
+      prayer: PrayerTimes(
+        fajr: p.fajr,
+        sunrise: p.sunrise,
+        dhuhr: p.zawal,
+        asr: p.asr,
+        zuhrEnd: p.zuhrEnd,
+        sunset: p.sunset,
+        maghrib: p.maghrib,
+        isha: p.isha,
+        zawal: p.zawal,
+      ),
       events: items,
       hijriEvents: hijriItems,
       interfaithEvents: interfaithItems,
