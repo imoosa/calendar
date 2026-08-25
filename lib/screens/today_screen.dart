@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/today_data.dart';
-import '../services/api_service.dart';
 import '../services/home_widget_service.dart';
+import '../services/local_calendar_service.dart';
 import '../theme.dart';
 
 class TodayScreen extends StatefulWidget {
@@ -12,7 +12,6 @@ class TodayScreen extends StatefulWidget {
 }
 
 class _TodayScreenState extends State<TodayScreen> {
-  final _api = ApiService();
   late Future<TodayData> _future;
 
   @override
@@ -22,7 +21,7 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 
   Future<TodayData> _load() async {
-    final data = await _api.fetchToday();
+    final data = await LocalCalendarService.todayData();
     await HomeWidgetService.pushToWidget(data);
     return data;
   }
@@ -40,7 +39,10 @@ class _TodayScreenState extends State<TodayScreen> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () async => setState(() => _future = _load()),
+        onRefresh: () async {
+          setState(() => _future = _load());
+          await _future;
+        },
         child: FutureBuilder<TodayData>(
           future: _future,
           builder: (context, snap) {
@@ -50,7 +52,7 @@ class _TodayScreenState extends State<TodayScreen> {
               );
             }
             if (snap.hasError) {
-              return _error(snap.error);
+              return Center(child: Text('Could not load today: ${snap.error}'));
             }
 
             final data = snap.data!;
@@ -76,56 +78,28 @@ class _TodayScreenState extends State<TodayScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'TODAY',
-            style: TextStyle(
-              color: AppColors.muted,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.4,
-            ),
-          ),
+          const Text('TODAY', style: TextStyle(
+            color: AppColors.muted, fontSize: 11,
+            fontWeight: FontWeight.w800, letterSpacing: 1.4,
+          )),
           const SizedBox(height: 4),
-          Text(
-            data.date,
-            style: const TextStyle(
-              fontSize: 13,
-              color: AppColors.muted,
-            ),
-          ),
+          Text(data.date, style: const TextStyle(fontSize: 13, color: AppColors.muted)),
           const SizedBox(height: 2),
-          Row(
-            children: [
-              const Icon(Icons.location_on_outlined, size: 15, color: AppColors.muted),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  data.locationName,
-                  style: const TextStyle(fontSize: 13, color: AppColors.muted),
-                ),
-              ),
-            ],
-          ),
+          Row(children: [
+            const Icon(Icons.location_on_outlined, size: 15, color: AppColors.muted),
+            const SizedBox(width: 4),
+            Expanded(child: Text(data.locationName,
+              style: const TextStyle(fontSize: 13, color: AppColors.muted))),
+          ]),
           if (data.native != null) ...[
             const SizedBox(height: 12),
-            Text(
-              '${data.native!.day} ${data.native!.monthName} ${data.native!.year}',
-              style: const TextStyle(
-                fontSize: 24,
-                height: 1.1,
-                fontWeight: FontWeight.w800,
-                color: AppColors.maroon,
-              ),
-            ),
+            Text('${data.native!.day} ${data.native!.monthName} ${data.native!.year}',
+              style: const TextStyle(fontSize: 24, height: 1.1,
+                fontWeight: FontWeight.w800, color: AppColors.maroon)),
             const SizedBox(height: 3),
-            Text(
-              data.native!.calendarLabel,
-              style: const TextStyle(
-                color: AppColors.muted,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            Text(data.native!.calendarLabel,
+              style: const TextStyle(color: AppColors.muted, fontSize: 12,
+                fontWeight: FontWeight.w600)),
           ],
         ],
       ),
@@ -133,58 +107,26 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 
   Widget _prayerCard(PrayerTimes p) {
+    final items = [
+      ['Fajr', p.fajr], ['Sunrise', p.sunrise], ['Zawal', p.zawal],
+      ['Zuhr End', p.zuhrEnd], ['Sunset', p.sunset], ['Maghrib', p.maghrib],
+      ['Isha', p.isha],
+    ];
     return InfoCard(
-      padding: EdgeInsets.zero,
-      child: Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 14, 16, 8),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Prayer Times',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-              ),
-            ),
-          ),
-          _prayerRow('Fajr', p.fajr, 'Asr', p.asr),
-          _prayerRow('Zawal', p.zawal, 'Maghrib', p.maghrib),
-          _prayerRow('Sunrise', p.sunrise, 'Sunset', p.sunset),
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(top: 5),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: AppColors.border)),
-            ),
-            child: Text(
-              'Isha   ${p.isha}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _prayerRow(String a, String av, String b, String bv) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-      child: Row(
-        children: [
-          Expanded(child: Text(a, style: const TextStyle(color: AppColors.muted))),
-          Expanded(
-            child: Text(av, style: const TextStyle(fontWeight: FontWeight.w700)),
-          ),
-          Expanded(child: Text(b, style: const TextStyle(color: AppColors.muted))),
-          Expanded(
-            child: Text(bv, style: const TextStyle(fontWeight: FontWeight.w700)),
-          ),
-        ],
+      padding: const EdgeInsets.all(12),
+      child: Wrap(
+        alignment: WrapAlignment.spaceAround,
+        runSpacing: 14,
+        children: items.map((x) => SizedBox(
+          width: 78,
+          child: Column(children: [
+            Text(x[0].toUpperCase(), style: const TextStyle(
+              fontSize: 9, color: AppColors.muted)),
+            const SizedBox(height: 3),
+            Text(x[1], style: const TextStyle(
+              fontSize: 13, fontWeight: FontWeight.w800)),
+          ]),
+        )).toList(),
       ),
     );
   }
@@ -194,95 +136,43 @@ class _TodayScreenState extends State<TodayScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Text(
-                'Today\'s events',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-              ),
-              const Spacer(),
-              Text(
-                '${data.events.length}',
-                style: const TextStyle(
-                  color: AppColors.maroon,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
+          const Text("Today's events", style: TextStyle(
+            fontSize: 15, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
           if (data.events.isEmpty)
-            const Text(
-              'No events today.',
-              style: TextStyle(
-                color: AppColors.muted,
-                fontStyle: FontStyle.italic,
-              ),
-            )
+            const Text('No events today.',
+              style: TextStyle(fontSize: 13, color: AppColors.muted))
           else
-            ...data.events.map(
-              (e) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      margin: const EdgeInsets.only(top: 5),
-                      decoration: BoxDecoration(
-                        color: parseHexColor(e.color),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: Text(
-                        e.title,
-                        style: const TextStyle(fontSize: 13.5),
-                      ),
-                    ),
-                  ],
+            ...data.events.map((e) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 5, right: 9),
+                  width: 7, height: 7,
+                  decoration: BoxDecoration(
+                    color: _eventColor(e.source),
+                    shape: BoxShape.circle,
+                  ),
                 ),
-              ),
-            ),
+                Expanded(child: Text(e.title,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+              ]),
+            )),
         ],
       ),
     );
   }
 
-  Widget _error(Object? error) {
-    return ListView(
-      children: [
-        const SizedBox(height: 120),
-        Padding(
-          padding: const EdgeInsets.all(24),
-          child: InfoCard(
-            child: Column(
-              children: [
-                const Icon(Icons.cloud_off, size: 38, color: AppColors.muted),
-                const SizedBox(height: 12),
-                const Text(
-                  'Could not connect to Samaa Calendar.',
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '$error',
-                  style: const TextStyle(color: AppColors.muted, fontSize: 12),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 14),
-                FilledButton(
-                  onPressed: () => setState(() => _future = _load()),
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
+  Color _eventColor(String? source) {
+    switch (source) {
+      case 'sunni': return AppColors.sunni;
+      case 'shia': return AppColors.shia;
+      case 'christian': return AppColors.christian;
+      case 'jewish': return AppColors.jewish;
+      case 'hindu': return AppColors.hindu;
+      case 'parsi': return AppColors.parsi;
+      case 'french': return AppColors.french;
+      default: return AppColors.bohra;
+    }
   }
 }
