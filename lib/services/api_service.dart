@@ -1,3 +1,4 @@
+// DEPRECATED: retained for reference only. No offline screen imports this file.
 // lib/services/api_service.dart
 // Updated for the multi-calendar Flutter Calendar screen.
 
