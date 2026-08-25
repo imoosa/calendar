@@ -106,10 +106,29 @@ class _CalendarScreenState extends State<CalendarScreen> {
             return _ErrorCard(error: snap.error.toString(), onRetry: reload);
           }
           final data = snap.data!;
-          final c = data['calendar'] as Map<String, dynamic>;
-          final secondary = data['secondary'] as Map<String, dynamic>? ?? {};
-          final nav = data['navigation'] as Map<String, dynamic>;
-          final weeks = (data['weeks'] as List<dynamic>? ?? []);
+
+          late Map<String, dynamic> c;
+          late Map<String, dynamic> secondary;
+          late Map<String, dynamic> nav;
+          late List<dynamic> weeks;
+
+          try {
+            c = data['calendar'] as Map<String, dynamic>;
+            secondary = data['secondary'] as Map<String, dynamic>? ?? {};
+            nav = data['navigation'] as Map<String, dynamic>;
+            weeks = (data['weeks'] as List<dynamic>? ?? []);
+          } catch (e, st) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: SelectableText(
+                  'Parse error:\n$e\n\n$st',
+                  style: const TextStyle(fontSize: 11, color: Colors.red),
+                ),
+              ),
+            );
+          }
+
           final prayer = data['prayer'] as Map<String, dynamic>?;
           final selected = data['selected'] as Map<String, dynamic>? ?? {};
           final today = data['today'] as Map<String, dynamic>? ?? {};
