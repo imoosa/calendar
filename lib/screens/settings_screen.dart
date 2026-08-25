@@ -1,8 +1,7 @@
 // lib/screens/settings_screen.dart
 //
 // Samaa calendar settings.
-// Calendar choices mirror the Flask application's CALENDARS registry:
-// Bohra, Sunni, Shia, Gregorian, Hebrew, Parsi and Hindu.
+// Mirrors the calendar choices in the web application's settings.
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -34,6 +33,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String _defaultCalendar = 'hijri';
   String _secondaryCalendar = 'gregorian';
+
+  bool _bohra = true;
+  bool _sunni = true;
+  bool _shia = true;
+  bool _christian = true;
+  bool _jewish = true;
+  bool _hindu = true;
+  bool _parsi = true;
+  bool _french = true;
+
   bool _loading = true;
   bool _saving = false;
 
@@ -49,51 +58,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
 
     setState(() {
-      _defaultCalendar =
-          calendars.containsKey(prefs.getString('default_calendar'))
-              ? prefs.getString('default_calendar')!
-              : 'hijri';
+      final defaultValue =
+          prefs.getString('default_calendar') ?? 'hijri';
+      final secondaryValue =
+          prefs.getString('secondary_calendar') ?? 'gregorian';
 
-      final secondary = prefs.getString('secondary_calendar') ?? 'gregorian';
+      _defaultCalendar = calendars.containsKey(defaultValue)
+          ? defaultValue
+          : 'hijri';
+
       _secondaryCalendar =
-          secondaryCalendars.containsKey(secondary) ? secondary : 'gregorian';
+          secondaryCalendars.containsKey(secondaryValue)
+              ? secondaryValue
+              : 'gregorian';
+
+      _bohra = prefs.getBool('show_bohra') ?? true;
+      _sunni = prefs.getBool('show_sunni') ?? true;
+      _shia = prefs.getBool('show_shia') ?? true;
+      _christian = prefs.getBool('show_christian') ?? true;
+      _jewish = prefs.getBool('show_jewish') ?? true;
+      _hindu = prefs.getBool('show_hindu') ?? true;
+      _parsi = prefs.getBool('show_parsi') ?? true;
+      _french = prefs.getBool('show_french') ?? true;
 
       _loading = false;
     });
   }
 
-  Future<void> _save({
-    String? defaultCalendar,
-    String? secondaryCalendar,
-  }) async {
+  Future<void> _save() async {
     setState(() => _saving = true);
 
     final prefs = await SharedPreferences.getInstance();
 
-    if (defaultCalendar != null) {
-      await prefs.setString('default_calendar', defaultCalendar);
-      _defaultCalendar = defaultCalendar;
-    }
+    await prefs.setString(
+      'default_calendar',
+      _defaultCalendar,
+    );
 
-    if (secondaryCalendar != null) {
-      await prefs.setString('secondary_calendar', secondaryCalendar);
-      _secondaryCalendar = secondaryCalendar;
-    }
+    await prefs.setString(
+      'secondary_calendar',
+      _secondaryCalendar,
+    );
+
+    await prefs.setBool('show_bohra', _bohra);
+    await prefs.setBool('show_sunni', _sunni);
+    await prefs.setBool('show_shia', _shia);
+    await prefs.setBool('show_christian', _christian);
+    await prefs.setBool('show_jewish', _jewish);
+    await prefs.setBool('show_hindu', _hindu);
+    await prefs.setBool('show_parsi', _parsi);
+    await prefs.setBool('show_french', _french);
 
     if (!mounted) return;
 
     setState(() => _saving = false);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Calendar settings saved')),
-    );
+    Navigator.pop(context, true);
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
       );
     }
 
@@ -104,53 +133,116 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _sectionTitle('Calendar'),
-          _card(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _dropdown(
-                  label: 'Default calendar',
-                  value: _defaultCalendar,
-                  items: calendars,
-                  onChanged: _saving
-                      ? null
-                      : (value) {
-                          if (value != null) {
-                            _save(defaultCalendar: value);
-                          }
-                        },
-                ),
-                const SizedBox(height: 18),
-                _dropdown(
-                  label: 'Secondary calendar',
-                  value: _secondaryCalendar,
-                  items: secondaryCalendars,
-                  onChanged: _saving
-                      ? null
-                      : (value) {
-                          if (value != null) {
-                            _save(secondaryCalendar: value);
-                          }
-                        },
-                ),
-              ],
-            ),
+          _section(
+            'Calendars',
+            [
+              _dropdown(
+                'Default calendar',
+                _defaultCalendar,
+                calendars,
+                (value) {
+                  if (value != null) {
+                    setState(() {
+                      _defaultCalendar = value;
+                    });
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              _dropdown(
+                'Secondary calendar',
+                _secondaryCalendar,
+                secondaryCalendars,
+                (value) {
+                  if (value != null) {
+                    setState(() {
+                      _secondaryCalendar = value;
+                    });
+                  }
+                },
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          _card(
-            child: Row(
-              children: [
-                const Icon(Icons.info_outline),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'The Calendar screen uses these selections to show '
-                    'the primary date and optional secondary date.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ),
-              ],
+
+          const SizedBox(height: 14),
+
+          _section(
+            'Event visibility',
+            [
+              _switch(
+                'Bohra',
+                _bohra,
+                (value) {
+                  setState(() => _bohra = value);
+                },
+              ),
+              _switch(
+                'Sunni',
+                _sunni,
+                (value) {
+                  setState(() => _sunni = value);
+                },
+              ),
+              _switch(
+                'Shia',
+                _shia,
+                (value) {
+                  setState(() => _shia = value);
+                },
+              ),
+              _switch(
+                'Christian',
+                _christian,
+                (value) {
+                  setState(() => _christian = value);
+                },
+              ),
+              _switch(
+                'Jewish',
+                _jewish,
+                (value) {
+                  setState(() => _jewish = value);
+                },
+              ),
+              _switch(
+                'Hindu',
+                _hindu,
+                (value) {
+                  setState(() => _hindu = value);
+                },
+              ),
+              _switch(
+                'Parsi',
+                _parsi,
+                (value) {
+                  setState(() => _parsi = value);
+                },
+              ),
+              _switch(
+                'French',
+                _french,
+                (value) {
+                  setState(() => _french = value);
+                },
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+
+          SizedBox(
+            height: 48,
+            child: FilledButton(
+              onPressed: _saving ? null : _save,
+              child: _saving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text('Save settings'),
             ),
           ),
         ],
@@ -158,32 +250,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _sectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-
-  Widget _card({required Widget child}) {
+  Widget _section(
+    String title,
+    List<Widget> children,
+  ) {
     return Card(
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(
-          color: Colors.grey.withValues(alpha: 0.20),
-        ),
-      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: child,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 14),
+            ...children,
+          ],
+        ),
       ),
     );
   }
@@ -192,11 +279,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     String label,
     String value,
     Map<String, String> items,
-    ValueChanged<String?>? onChanged,
+    ValueChanged<String?> onChanged,
   ) {
-    final safeValue = items.containsKey(value)
-        ? value
-        : items.keys.first;
+    final safeValue =
+        items.containsKey(value) ? value : items.keys.first;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -204,14 +290,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Text(
           label,
           style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+            fontSize: 12,
             color: AppColors.muted,
           ),
         ),
-        const SizedBox(height: 7),
+        const SizedBox(height: 5),
         DropdownButtonFormField<String>(
-          value: safeValue,
+          initialValue: safeValue,
           isExpanded: true,
           items: items.entries
               .map(
@@ -231,6 +316,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _switch(
+    String label,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
+    return SwitchListTile.adaptive(
+      contentPadding: EdgeInsets.zero,
+      title: Text(label),
+      value: value,
+      onChanged: onChanged,
     );
   }
 }
