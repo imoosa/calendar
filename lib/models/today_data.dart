@@ -26,35 +26,40 @@ class PrayerTimes {
   final String sunrise;
   final String dhuhr;
   final String asr;
+  final String zuhrEnd;
+  final String sunset;
   final String maghrib;
   final String isha;
   final String zawal;
-  final String sunset;
 
-  PrayerTimes({
+  const PrayerTimes({
     required this.fajr,
     required this.sunrise,
     required this.dhuhr,
     required this.asr,
+    required this.zuhrEnd,
+    required this.sunset,
     required this.maghrib,
     required this.isha,
     required this.zawal,
-    required this.sunset,
   });
 
   factory PrayerTimes.fromJson(Map<String, dynamic> json) {
     String v(String key, [String fallback = '--:--']) =>
         '${json[key] ?? fallback}';
 
+    final dhuhr = v('dhuhr', v('zuhr', v('zawal')));
+
     return PrayerTimes(
       fajr: v('fajr'),
       sunrise: v('sunrise'),
-      dhuhr: v('dhuhr'),
+      dhuhr: dhuhr,
       asr: v('asr'),
-      maghrib: v('maghrib'),
+      zuhrEnd: v('zuhr_end', v('zuhrEnd', v('asr'))),
+      sunset: v('sunset'),
+      maghrib: v('maghrib', v('sunset')),
       isha: v('isha'),
-      zawal: v('zawal', v('dhuhr')),
-      sunset: v('sunset', v('maghrib')),
+      zawal: v('zawal', dhuhr),
     );
   }
 }
