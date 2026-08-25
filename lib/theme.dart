@@ -11,15 +11,15 @@ class AppColors {
   static const warningBg = Color(0xFFFFF8E1);
   static const warningBorder = Color(0xFFFFE08A);
 
-  static const bohra = Color(0xFF254A45);
-  static const sunni = Color(0xFF2563EB);
-  static const shia = Color(0xFF7C3AED);
-  static const christian = Color(0xFF2563EB);
-  static const french = Color(0xFF64748B);
-  static const jewish = Color(0xFF7C3AED);
-  static const hindu = Color(0xFFEA580C);
-  static const parsi = Color(0xFF059669);
-  static const personal = Color(0xFFD97706);
+ static const bohra = Color(0xFF254A45);      // --bohra
+  static const sunni = Color(0xFF1E8449);      // --sunni  (was wrongly blue)
+  static const shia = Color(0xFF922B73);       // --shia   (was wrongly purple)
+  static const christian = Color(0xFF2B6CB0);  // --christian
+  static const french = Color(0xFF2D2D2D);     // --french (was wrongly gray-blue)
+  static const jewish = Color(0xFF7C3AED);     // --jewish
+  static const hindu = Color(0xFFD9822B);      // --hindu  (was wrongly orange-red)
+  static const parsi = Color(0xFF16A085);      // --parsi
+  static const personal = Color(0xFF1F9D55);
 }
 
 ThemeData buildAppTheme() {
